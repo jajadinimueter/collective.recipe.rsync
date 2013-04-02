@@ -64,12 +64,14 @@ class Recipe(object):
 
     def install(self):
         """Installer"""
+
+
         if self.script:
             bindir = self.buildout['buildout']['bin-directory']
-            arguments = "source='%s', target='%s', port=%s, args=[%s]"
+            arguments = "source=%s, target=%s, port=%s, args=[%s]"
             arguments = arguments % (
-                self.source,
-                self.target,
+                _format_arg_string(self.source),
+                _format_arg_string(self.target),
                 self.port,
                 ','.join(["'%s'" % a for a in self.args]))
 
@@ -86,3 +88,11 @@ class Recipe(object):
     def update(self):
         """Updater"""
         self.install()
+
+
+def _format_arg_string(s):
+    if not s:
+        return 'None'
+    else:
+        return "'%s'" % s
+
