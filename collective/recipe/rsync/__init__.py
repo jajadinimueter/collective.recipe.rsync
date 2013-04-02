@@ -14,6 +14,13 @@ line = ('-----------------------------------' +
 
 
 def rsync(source=None, target=None, port=None, args=None):
+    if not source:
+        _LOG.error('No `source` option specified. Add source = /path/to/source')
+        return
+
+    if not target:
+        _LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
+
     args = args or []
 
     cmd = ['rsync', '-av', '--partial', '--progress']
