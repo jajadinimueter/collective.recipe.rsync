@@ -43,20 +43,33 @@ def rsync(source=None, target=None, port=None, args=None):
     _LOG.info('Done.')
 
 
+def asbool(s):
+    if s:
+        return s.strip().lower() == 'true'
+    return False
+
+
 class Recipe(object):
     """zc.buildout recipe"""
 
     def __init__(self, buildout, name, options):
         self.buildout, self.name, self.options = buildout, name, options
-        self.source = options.get('source')
-        self.target = options.get('target')
+        ignore_errors = asbool(options.get('ignore-errors'))
+
+        if ignore_errors:
+            self.source = options.get('source')
+            self.target = options.get('target')
+        else:
+            self.source = options['source']
+            self.target = options['target']
+
         self.port = None
         self.script = False
         self.args = []
         if 'port' in options:
             self.port = options['port']
         if 'script' in options:
-            if options['script'] == 'true':
+            if asbool(options['script']):
                 self.script = True
         args = self.options.get('args')
         if args:
