@@ -20,6 +20,7 @@ def rsync(source=None, target=None, port=None, args=None):
 
     if not target:
         _LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
+        return
 
     args = args or []
 
@@ -64,7 +65,6 @@ class Recipe(object):
 
     def install(self):
         """Installer"""
-
 
         if self.script:
             bindir = self.buildout['buildout']['bin-directory']
