@@ -47,8 +47,8 @@ class Recipe(object):
 
     def __init__(self, buildout, name, options):
         self.buildout, self.name, self.options = buildout, name, options
-        self.source = options['source']
-        self.target = options['target']
+        self.source = options.get('source')
+        self.target = options.get('target')
         self.port = None
         self.script = False
         self.args = []
