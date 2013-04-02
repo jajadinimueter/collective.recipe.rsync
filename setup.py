@@ -39,4 +39,5 @@ setup(
     url='http://collective.github.com/collective.recipe.rsync',
     version=VERSION,
     zip_safe=False,
+    use_2to3=True
 )
