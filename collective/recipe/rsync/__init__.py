@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Recipe rsync"""
-
 import logging
-import sys
 import subprocess
 from pkg_resources import working_set
 from sys import executable
 from zc.buildout.easy_install import scripts as create_script
 
-_LOG = logging.getLogger("rsync")
-line = ('-----------------------------------' +
-        '-----------------------------------')
+
+CMD = 'rsync'
+LINE = '-' * 80
+LOG = logging.getLogger("rsync")
+OPTIONS = '-av --partial --progress'
 
 
-def rsync(source=None, target=None, port=None, args=None):
+def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None):
+    """
+    Parse options, build and run command
+    """
+    
     if not source:
         _LOG.error('No `source` option specified. Add source = /path/to/source')
         return
@@ -22,25 +25,34 @@ def rsync(source=None, target=None, port=None, args=None):
         _LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
         return
 
-    args = args or []
-
-    cmd = ['rsync', '-av', '--partial', '--progress']
-
-    # add custom args
-    cmd.extend(args)
-
+    # Parse options
+    if rsync_options is None:
+        rsync_options = OPTIONS.split()
+    else:
+        rsync_options = rsync_options.split()
+    if exclude:
+        for e in exclude.split():
+            rsync_options += ['--exclude=%s' % e]
     if port:
-        cmd.extend(['-e', 'ssh -p %s' % port])
+        rsync_options += ['-e', 'ssh -p %s' % port]
 
-    cmd.extend([source, target])
+    rsync_options.append(source)
+    rsync_options.append(target)
 
-    _LOG.info(line)
-    _LOG.info('Running rsync with command: ')
-    _LOG.info('  $ %s' % ' '.join(cmd))
-    _LOG.info('  Note: depending on the source file(s) size and location, this may take a while!')
-    _LOG.info(line)
+    # Build cmd
+    cmd = rsync_options
+    cmd.insert(0, CMD)
+
+    LOG.info(LINE)
+    LOG.info('Running rsync with command: ')
+    LOG.info('  $ %s' % ' '.join(cmd))
+    LOG.info(
+        'Note: depending on size & location of source file(s),'
+        ' this may take a while!'
+    )
+    LOG.info(LINE)
     subprocess.call(cmd)
-    _LOG.info('Done.')
+    LOG.info('Done.')
 
 
 def asbool(s):
@@ -50,9 +62,12 @@ def asbool(s):
 
 
 class Recipe(object):
-    """zc.buildout recipe"""
+    """
+    """
 
     def __init__(self, buildout, name, options):
+        """
+        """
         self.buildout, self.name, self.options = buildout, name, options
         ignore_errors = asbool(options.get('ignore-errors'))
 
@@ -62,10 +77,14 @@ class Recipe(object):
         else:
             self.source = options['source']
             self.target = options['target']
-
+        self.exclude = None
         self.port = None
+        self.rsync_options = None
         self.script = False
-        self.args = []
+        if 'exclude' in self.options:
+            self.exclude = options['exclude']
+        if 'options' in self.options:
+            self.rsync_options = options['options']
         if 'port' in options:
             self.port = options['port']
         if 'script' in options:
@@ -75,31 +94,41 @@ class Recipe(object):
         if args:
             self.args = [p.strip() for p in args.split(' ')
                          if p.strip()]
-
     def install(self):
-        """Installer"""
-
+        """
+        """
         if self.script:
             bindir = self.buildout['buildout']['bin-directory']
-            arguments = "source=%s, target=%s, port=%s, args=[%s]"
-            arguments = arguments % (
-                _format_arg_string(self.source),
-                _format_arg_string(self.target),
+            arguments = ''
+            for key, value in {'exclude': self.exclude, 'rsync_options': self.rsync_options, 'port': self.port, 'source': self.source, 'target': self.target}.iteritems():
+                if value is not None:
+                    arguments += "%s='%s', " % (key, value)
                 self.port,
-                ','.join(["'%s'" % a for a in self.args]))
-
-            create_script([('%s' % self.name, 'collective.recipe.rsync.__init__', 'rsync')],
-                          working_set, executable, bindir, arguments=arguments)
-
-            return tuple((bindir + '/' + 'rsync',))
+                [
+                    (
+                        '%s' % self.name,
+                        'collective.recipe.rsync.__init__', 'rsync')
+                ],
+                working_set,
+                executable,
+                bindir,
+                arguments=arguments)
+            return tuple()
         else:
             # if we make it this far, script option is not set so we execute
             # as buildout runs
-            rsync(source=self.source, target=self.target, port=self.port)
+            rsync(
+                exclude=self.exclude,
+                port=self.port,
+                rsync_options=self.rsync_options,
+                source=self.source,
+                target=self.target,
+                )
             return tuple()
 
     def update(self):
-        """Updater"""
+        """
+        """
         self.install()
 
 
