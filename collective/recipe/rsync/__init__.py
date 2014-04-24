@@ -8,21 +8,22 @@ from zc.buildout.easy_install import scripts as create_script
 
 CMD = 'rsync'
 LINE = '-' * 80
-LOG = logging.getLogger("rsync")
-OPTIONS = '-av --partial --progress'
+LOG = logging.getLogger('rsync')
+OPTIONS = '-a --partial --progress'
 
 
-def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None):
+def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None,
+          verbose=False):
     """
     Parse options, build and run command
     """
-    
+
     if not source:
-        _LOG.error('No `source` option specified. Add source = /path/to/source')
+        LOG.error('No `source` option specified. Add source = /path/to/source')
         return
 
     if not target:
-        _LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
+        LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
         return
 
     # Parse options
@@ -30,6 +31,10 @@ def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None)
         rsync_options = OPTIONS.split()
     else:
         rsync_options = rsync_options.split()
+
+    if verbose:
+        rsync_options.append('-v')
+
     if exclude:
         for e in exclude.split():
             rsync_options += ['--exclude=%s' % e]
@@ -55,10 +60,27 @@ def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None)
     LOG.info('Done.')
 
 
-def asbool(s):
-    if s:
-        return s.strip().lower() == 'true'
+def asbool(val):
+    if val:
+        return val.strip().lower() == 'true'
     return False
+
+
+def format_arg(val):
+    if not val:
+        return 'None'
+    else:
+        return "'%s'" % val
+
+
+def build_script_args(arguments):
+    """
+    Build comma separated argument list to pass to
+    the :func.`.rsync` function inside a binscript.
+    """
+    return ','.join('%s=%s' % (k, format_arg(v))
+                    for k, v in arguments.items()
+                    if v is not None)
 
 
 class Recipe(object):
@@ -67,74 +89,61 @@ class Recipe(object):
 
     def __init__(self, buildout, name, options):
         """
+        Called by buildout when the part is initialized
         """
+        bool_args = ['verbose']
         self.buildout, self.name, self.options = buildout, name, options
-        ignore_errors = asbool(options.get('ignore-errors'))
+        arguments = dict(**options)
 
-        if ignore_errors:
-            self.source = options.get('source')
-            self.target = options.get('target')
-        else:
-            self.source = options['source']
-            self.target = options['target']
-        self.exclude = None
-        self.port = None
-        self.rsync_options = None
-        self.script = False
-        if 'exclude' in self.options:
-            self.exclude = options['exclude']
-        if 'options' in self.options:
-            self.rsync_options = options['options']
-        if 'port' in options:
-            self.port = options['port']
-        if 'script' in options:
-            if asbool(options['script']):
-                self.script = True
-        args = self.options.get('args')
-        if args:
-            self.args = [p.strip() for p in args.split(' ')
-                         if p.strip()]
+        # actually just ignores mission source/target options
+        ignore_errors = asbool(options.pop('ignore-errors', False))
+
+        # this is set by the user if he wants to create
+        # a script inside bin/ named like the part to execute
+        # the rsync command
+        self.script = asbool(options.pop('script', False))
+
+        if 'args' in arguments:
+            arguments['args'] = [arg.strip()
+                                 for arg in arguments['args'].split()
+                                 if arg.strip()]
+
+        for arg_name in bool_args:
+            if arg_name in arguments:
+                arguments[arg_name] = asbool(arguments[arg_name])
+
+        if not ignore_errors:
+            # trigger validation of source and target
+            _ = options['source']
+            _ = options['target']
+
+        self.arguments = arguments
+
     def install(self):
         """
+        Called every time the user runs buildout
         """
         if self.script:
+            # the user wants us to create a script called like
+            # the part the recipe is configured
             bindir = self.buildout['buildout']['bin-directory']
-            arguments = ''
-            for key, value in {'exclude': self.exclude, 'rsync_options': self.rsync_options, 'port': self.port, 'source': self.source, 'target': self.target}.iteritems():
-                if value is not None:
-                    arguments += "%s='%s', " % (key, value)
-                self.port,
-                [
-                    (
-                        '%s' % self.name,
-                        'collective.recipe.rsync.__init__', 'rsync')
-                ],
-                working_set,
-                executable,
-                bindir,
-                arguments=arguments)
-            return tuple()
+            script_args = build_script_args(self.arguments)
+
+            create_script(
+                [('%s' % self.name,
+                  'collective.recipe.rsync.__init__', 'rsync')],
+                working_set, executable, bindir,
+                arguments=script_args)
         else:
             # if we make it this far, script option is not set so we execute
             # as buildout runs
-            rsync(
-                exclude=self.exclude,
-                port=self.port,
-                rsync_options=self.rsync_options,
-                source=self.source,
-                target=self.target,
-                )
-            return tuple()
+            rsync(**self.arguments)
+
+        return ()
 
     def update(self):
         """
+        Called every time the user runs buildout
         """
         self.install()
-
-
-def _format_arg_string(s):
-    if not s:
-        return 'None'
-    else:
-        return "'%s'" % s
 
