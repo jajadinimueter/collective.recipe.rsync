@@ -9,55 +9,62 @@ from zc.buildout.easy_install import scripts as create_script
 CMD = 'rsync'
 LINE = '-' * 80
 LOG = logging.getLogger('rsync')
-OPTIONS = '-a --partial --progress'
+OPTIONS = '-a --partial'
 
+# declare arguments we like to receive
+EXPECTED_ARGS = {'source': None, 'target': None, 'exclude': None,
+                 'port':None, 'options': None}
+EXPECTED_BOOL_ARGS = {'verbose': False, 'ignore-errors': False,
+                      'script': False}
+EXPECTED_ARGS.update(EXPECTED_BOOL_ARGS)
+EXPECTED_LIST_ARGS = {'args': None}
+EXPECTED_ARGS.update(EXPECTED_LIST_ARGS)
 
-def rsync(exclude=None, port=None, rsync_options=None, source=None, target=None,
-          verbose=False):
+def rsync(exclude=None, port=None, options=None, source=None, target=None,
+          verbose=False, args=None):
     """
-    Parse options, build and run command
+    Actually runs the rsync command with previously parsed options
     """
-
-    if not source:
-        LOG.error('No `source` option specified. Add source = /path/to/source')
-        return
-
-    if not target:
-        LOG.error('No `target` option specified. Add target = remotehost:/path/to/target/')
-        return
 
     # Parse options
-    if rsync_options is None:
-        rsync_options = OPTIONS.split()
+    if options is None:
+        options = OPTIONS.split()
     else:
-        rsync_options = rsync_options.split()
+        options = options.split()
+
+    if args:
+        options.extend(args)
 
     if verbose:
-        rsync_options.append('-v')
+        options.extend(['-v',  '--progress'])
 
     if exclude:
         for e in exclude.split():
-            rsync_options += ['--exclude=%s' % e]
+            options += ['--exclude=%s' % e]
     if port:
-        rsync_options += ['-e', 'ssh -p %s' % port]
+        options += ['-e', 'ssh -p %s' % port]
 
-    rsync_options.append(source)
-    rsync_options.append(target)
+    options.append(source)
+    options.append(target)
 
     # Build cmd
-    cmd = rsync_options
+    cmd = options
     cmd.insert(0, CMD)
 
-    LOG.info(LINE)
-    LOG.info('Running rsync with command: ')
-    LOG.info('  $ %s' % ' '.join(cmd))
-    LOG.info(
-        'Note: depending on size & location of source file(s),'
-        ' this may take a while!'
-    )
-    LOG.info(LINE)
+    if verbose:
+        LOG.info(LINE)
+        LOG.info('Running rsync with command: ')
+        LOG.info('  $ %s' % ' '.join(cmd))
+        LOG.info(
+            'Note: depending on size & location of source file(s),'
+            ' this may take a while!'
+        )
+        LOG.info(LINE)
+
     subprocess.call(cmd)
-    LOG.info('Done.')
+
+    if verbose:
+        LOG.info('Done.')
 
 
 def asbool(val):
@@ -83,6 +90,27 @@ def build_script_args(arguments):
                     if v is not None)
 
 
+def convert_arg(k, v):
+    v = v or ''
+    v = v.strip()
+    if not v:
+        return EXPECTED_ARGS.get(k)
+    elif k in EXPECTED_BOOL_ARGS:
+        return asbool(v)
+    elif k in EXPECTED_LIST_ARGS:
+        return [arg.strip()
+                for arg in v.split()
+                if arg.strip()]
+    elif k in EXPECTED_ARGS:
+        return v
+    else:
+        return None
+
+
+def include_arg(k):
+    return k in EXPECTED_ARGS
+
+
 class Recipe(object):
     """
     """
@@ -91,26 +119,19 @@ class Recipe(object):
         """
         Called by buildout when the part is initialized
         """
-        bool_args = ['verbose']
+
         self.buildout, self.name, self.options = buildout, name, options
-        arguments = dict(**options)
+
+        arguments = dict((k, convert_arg(k, options.get(k))) for k in EXPECTED_ARGS
+                         if include_arg(k))
 
         # actually just ignores mission source/target options
-        ignore_errors = asbool(options.pop('ignore-errors', False))
+        ignore_errors = arguments.pop('ignore-errors')
 
         # this is set by the user if he wants to create
         # a script inside bin/ named like the part to execute
         # the rsync command
-        self.script = asbool(options.pop('script', False))
-
-        if 'args' in arguments:
-            arguments['args'] = [arg.strip()
-                                 for arg in arguments['args'].split()
-                                 if arg.strip()]
-
-        for arg_name in bool_args:
-            if arg_name in arguments:
-                arguments[arg_name] = asbool(arguments[arg_name])
+        self.script = arguments.pop('script')
 
         if not ignore_errors:
             # trigger validation of source and target
@@ -123,6 +144,19 @@ class Recipe(object):
         """
         Called every time the user runs buildout
         """
+
+        # check whether one of source or target is not defined
+        # exit with an error message
+        if not self.arguments.get('source'):
+            LOG.error('Error in part %s: no "source" option specified. '
+                      'Add source = /path/to/source' % self.name)
+            return
+
+        if not self.arguments.get('target'):
+            LOG.error('Error in part %s: no "target" option specified. '
+                      'Add target = remotehost:/path/to/target/' % self.name)
+            return
+
         if self.script:
             # the user wants us to create a script called like
             # the part the recipe is configured
