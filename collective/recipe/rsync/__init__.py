@@ -6,6 +6,12 @@ from sys import executable
 from zc.buildout.easy_install import scripts as create_script
 
 
+try:
+    #noinspection PyUnresolvedReferences
+    STR_INST = (basestring, )
+except:
+    STR_INST = (str, )
+
 CMD = 'rsync'
 LINE = '-' * 80
 LOG = logging.getLogger('rsync')
@@ -19,6 +25,7 @@ EXPECTED_BOOL_ARGS = {'verbose': False, 'ignore-errors': False,
 EXPECTED_ARGS.update(EXPECTED_BOOL_ARGS)
 EXPECTED_LIST_ARGS = {'args': None}
 EXPECTED_ARGS.update(EXPECTED_LIST_ARGS)
+
 
 def rsync(exclude=None, port=None, options=None, source=None, target=None,
           verbose=False, args=None):
@@ -74,10 +81,9 @@ def asbool(val):
 
 
 def format_arg(val):
-    if not val:
-        return 'None'
-    else:
-        return "'%s'" % val
+    if isinstance(val, STR_INST):
+        return '"%s"' % val
+    return val
 
 
 def build_script_args(arguments):
@@ -86,8 +92,7 @@ def build_script_args(arguments):
     the :func.`.rsync` function inside a binscript.
     """
     return ','.join('%s=%s' % (k, format_arg(v))
-                    for k, v in arguments.items()
-                    if v is not None)
+                    for k, v in list(arguments.items()))
 
 
 def convert_arg(k, v):
